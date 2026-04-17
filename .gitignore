@@ -1,0 +1,15 @@
+# NetBeans project files
+nbproject/private/
+nbproject/genfiles.properties
+
+# Build output
+build/
+build.xml
+
+# Java artifacts
+*.jar
+*.class
+
+# OS files
+.DS_Store
+Thumbs.db
