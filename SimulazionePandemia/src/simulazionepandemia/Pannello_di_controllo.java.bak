@@ -1,0 +1,1126 @@
+package simulazionepandemia;
+
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+import java.text.DecimalFormat;
+import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+
+/**
+ * Pannello di controllo minimale (Java 8).
+ */
+public class Pannello_di_controllo extends JFrame {
+        private static final DecimalFormat FMT = new DecimalFormat("0.####");
+        private final Pandemia pandemia;
+        private boolean running = false;
+        private boolean firstStart = true;
+        private static int infettiIniziali;
+        private static int popolazioneIniziale;
+        private static int asintomaticiPerc;
+        private static int infettivitaPerc;
+        private static int immuniPerc;
+        private static int mortiPerc;
+        private static int checkBoxState; // 0 nessuna, 1 vaccino, -1 quarantena
+        private static int tempoQuarantenaMs;
+        private JSpinner spPopolazione;
+        private JSpinner spInfetti;
+        private JSpinner spInfettivita;
+        private JSpinner spAsintomatici;
+        private JSpinner spMorti;
+        private JSpinner spImmuni;
+        private JSpinner spTempoQuarantena;
+        private JCheckBox chkPercentualeInfetti;
+        private JCheckBox chkMortiAttivi;
+        private JRadioButton rbVuoto;
+        private JRadioButton rbVaccino;
+        private JRadioButton rbQuarantena;
+        private static JLabel lblPopolazione;
+        private static JLabel lblInfetti;
+        private static JLabel lblImmuni;
+        private static JLabel lblMediaInfetti;
+        private JButton btnStart;
+        public Pannello_di_controllo() {
+                super("Pannello di controllo");
+                setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                setResizable(false);
+                pandemia = new Pandemia();
+                buildUI();
+                pack();
+                setLocationRelativeTo(null);
+                JFrame frameSim = new JFrame("Pandemia");
+                frameSim.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                frameSim.add(pandemia);
+                frameSim.pack();
+                frameSim.setLocation(getX() + getWidth() + 10, getY());
+                frameSim.setVisible(true);
+                showSpeedDialog();
+        }
+
+        private void buildUI() {
+                JPanel root = new JPanel(new BorderLayout(8,8));
+                setContentPane(root);
+
+                JPanel params = new JPanel(new GridLayout(0,2,4,4));
+                spPopolazione = spinner(100,1,10000,1);
+                spInfetti = spinner(1,1,10000,1);
+                spInfettivita = spinner(33,0,100,1);
+                spAsintomatici = spinner(20,0,100,1);
+                spMorti = spinner(10,0,100,1);
+                spImmuni = spinner(20,0,100,1);
+                spTempoQuarantena = spinner(10000,0,600000,500);
+                chkPercentualeInfetti = new JCheckBox("Infetti iniziali in %", false);
+                chkMortiAttivi = new JCheckBox("Morti attivi", true);
+                params.add(new JLabel("Popolazione iniziale")); params.add(spPopolazione);
+                params.add(new JLabel("Infetti iniziali")); params.add(spInfetti);
+                params.add(chkPercentualeInfetti); params.add(new JLabel());
+                params.add(new JLabel("Infettività (%)")); params.add(spInfettivita);
+                params.add(new JLabel("Asintomatici / infetti (%)")); params.add(spAsintomatici);
+                params.add(new JLabel("Morti per infetti (%)")); params.add(spMorti);
+                params.add(chkMortiAttivi); params.add(new JLabel());
+                params.add(new JLabel("Immuni sopravvissuti (%)")); params.add(spImmuni);
+                params.add(new JLabel("Tempo quarantena (ms)")); params.add(spTempoQuarantena);
+                add(params, BorderLayout.NORTH);
+
+                JPanel mode = new JPanel(new GridLayout(1,3));
+                ButtonGroup grp = new ButtonGroup();
+                rbVuoto = new JRadioButton("Nessuna", true);
+                rbVaccino = new JRadioButton("Vaccino");
+                rbQuarantena = new JRadioButton("Quarantena");
+                grp.add(rbVuoto); grp.add(rbVaccino); grp.add(rbQuarantena);
+                ChangeListener cl = new ChangeListener(){ public void stateChanged(ChangeEvent e){ updateModeState(); }};
+                rbVuoto.addChangeListener(cl); rbVaccino.addChangeListener(cl); rbQuarantena.addChangeListener(cl);
+                mode.add(rbVuoto); mode.add(rbVaccino); mode.add(rbQuarantena);
+                add(mode, BorderLayout.CENTER);
+
+                JPanel stato = new JPanel(new GridLayout(2,2,4,4));
+                lblPopolazione = new JLabel("Pop: 0");
+                lblInfetti = new JLabel("Infetti: 0");
+                lblImmuni = new JLabel("Immuni: 0");
+                lblMediaInfetti = new JLabel("Media: 0");
+                stato.add(lblPopolazione); stato.add(lblInfetti); stato.add(lblImmuni); stato.add(lblMediaInfetti);
+                add(stato, BorderLayout.SOUTH);
+
+                JPanel actions = new JPanel();
+                btnStart = new JButton("Avvia");
+                JButton btnHelp = new JButton("Help");
+                btnStart.addActionListener(e -> toggleStart());
+                btnHelp.addActionListener(e -> showHelpDialog());
+                actions.add(btnStart); actions.add(btnHelp);
+                add(actions, BorderLayout.WEST);
+        }
+
+        private JSpinner spinner(int value,int min,int max,int step){ return new JSpinner(new SpinnerNumberModel(value,min,max,step)); }
+
+        private void toggleStart() {
+                if (!running) {
+                        if (firstStart) { readInitialParameters(); firstStart = false; }
+                        pandemia.setAppState(true);
+                        btnStart.setText("Stop");
+                        running = true;
+                } else {
+                        pandemia.setAppState(false);
+                        btnStart.setText("Avvia");
+                        running = false;
+                }
+        }
+
+        private void readInitialParameters() {
+                popolazioneIniziale = ((Integer)spPopolazione.getValue()).intValue();
+                infettiIniziali = ((Integer)spInfetti.getValue()).intValue();
+                infettivitaPerc = ((Integer)spInfettivita.getValue()).intValue();
+                asintomaticiPerc = ((Integer)spAsintomatici.getValue()).intValue();
+                mortiPerc = chkMortiAttivi.isSelected() ? ((Integer)spMorti.getValue()).intValue() : 0;
+                immuniPerc = ((Integer)spImmuni.getValue()).intValue();
+                tempoQuarantenaMs = ((Integer)spTempoQuarantena.getValue()).intValue();
+                if (chkPercentualeInfetti.isSelected()) { infettiIniziali = Math.round(popolazioneIniziale * infettiIniziali / 100f); }
+                pandemia.SetPopolazioneIniziale(popolazioneIniziale, infettiIniziali);
+                pandemia.SetInfettività(infettivitaPerc, popolazioneIniziale);
+                pandemia.SetAsintomatici(asintomaticiPerc, infettivitaPerc);
+                pandemia.SetmortiInfetti(mortiPerc, infettivitaPerc);
+                pandemia.SetGuaritiImmuni(immuniPerc, infettivitaPerc);
+                lblPopolazione.setText("Pop: " + popolazioneIniziale);
+                lblInfetti.setText("Infetti: " + infettiIniziali);
+                lblMediaInfetti.setText("Media: 0");
+        }
+
+        private void updateModeState() {
+                if (rbVuoto.isSelected()) { checkBoxState = 0; tempoQuarantenaMs = 0; pandemia.RemoveListener(); }
+                else if (rbVaccino.isSelected()) { checkBoxState = 1; tempoQuarantenaMs = 0; pandemia.setListener(); }
+                else if (rbQuarantena.isSelected()) { checkBoxState = -1; tempoQuarantenaMs = ((Integer)spTempoQuarantena.getValue()).intValue(); pandemia.setListener(); }
+        }
+
+        private void showSpeedDialog() {
+                JDialog dlg = new JDialog(this, "Velocità", false);
+                JPanel p = new JPanel(new BorderLayout(4,4));
+                JLabel label = new JLabel("Ritardo aggiornamento (ms)");
+                int cur = 16; try { cur = pandemia.getUpdateDelayMillis(); } catch (Throwable t) {}
+                JSlider slider = new JSlider(5,150,cur);
+                slider.setMajorTickSpacing(25); slider.setMinorTickSpacing(5); slider.setPaintTicks(true);
+                JLabel val = new JLabel(String.valueOf(cur));
+                slider.addChangeListener(new ChangeListener(){ public void stateChanged(ChangeEvent e){ int v=slider.getValue(); val.setText(String.valueOf(v)); pandemia.setUpdateDelayMillis(v);} });
+                p.add(label,BorderLayout.NORTH); p.add(slider,BorderLayout.CENTER); p.add(val,BorderLayout.EAST);
+                dlg.getContentPane().add(p); dlg.pack(); dlg.setLocationRelativeTo(this); dlg.setVisible(true);
+        }
+
+        private void showHelpDialog() {
+                StringBuilder sb = new StringBuilder();
+                sb.append("Guida rapida\n\n")
+                  .append("Avvia/Stop: controlla simulazione.\n")
+                  .append("Popolazione / Infetti iniziali (opzione %).\n")
+                  .append("Infettività, Asintomatici, Morti, Immuni gestiscono transizioni.\n")
+                  .append("Modalità area: Vaccino immunizza; Quarantena blocca per ms.\n")
+                  .append("Velocità: slider ms tra update.\n")
+                  .append("Colori: grigio suscettibile, rosso/arancio infetto/asintomatico, giallo immune, croce morto.\n");
+                JOptionPane.showMessageDialog(this, sb.toString(), "Help", JOptionPane.INFORMATION_MESSAGE);
+        }
+
+        public static void setUI(int popolazione, int infetti, double immuni) {
+                if (lblPopolazione == null) return;
+                lblPopolazione.setText("Pop: " + popolazione);
+                lblInfetti.setText("Infetti: " + infetti);
+                lblImmuni.setText("Immuni: " + ((int)immuni));
+                double media = infetti > 0 ? (double)(infetti - infettiIniziali)/infetti : 0.0;
+                lblMediaInfetti.setText("Media: " + FMT.format(media));
+        }
+        public static int getTempoQuarantena() { return tempoQuarantenaMs; }
+        public static int getCheckBoxState() { return checkBoxState; }
+        public static int getAsintomatici() { return asintomaticiPerc; }
+        public static int getNuoviInfetti() { return infettivitaPerc; }
+        public static int getMortiInfetti() { return mortiPerc; }
+        public static int getImmuniGuariti() { return immuniPerc; }
+}
+
+/* RIMOSSO codice legacy NetBeans generato automaticamente (intero blocco eliminato). */
+                                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                .addComponent(Asintomatici, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                                        .addGroup(layout.createSequentialGroup()
+                                                .addComponent(jLabel6)
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addComponent(InfettiIniziali, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                        .addGroup(layout.create.SequentialGroup()
+                                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                                        .addGroup(layout.create.SequentialGroup()
+                                                                .addGap(0, 0, Short.MAX_VALUE)
+                                                                .addComponent(jLabel5))
+                                                        .addGroup(layout.create.SequentialGroup()
+                                                                .addComponent(Quarantena, javax.swing.GroupLayout.PREFERRED_SIZE, 98, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                                .addComponent(TempoQuarantena, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addGap(92, 92, 92)
+                                                                .addComponent(jLabel4)))
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                        .addComponent(PopolazioneIniziale, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                        .addComponent(Immuni, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                                        .addGroup(layout.create.SequentialGroup()
+                                                .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 72, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addComponent(jLabelPopolazione, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                );
+                layout.setVerticalGroup(
+                        layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                        .addGroup(layout.create.SequentialGroup()
+                                .addContainerGap()
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                .addComponent(Start)
+                                                .addComponent(Help))
+                                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                .addComponent(jLabel1)
+                                                .addComponent(Infettivita, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                                .addGap(7, 7, 7)
+                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addGroup(layout.create.SequentialGroup()
+                                                .addComponent(vuoto)
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addComponent(Vaccino)
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                        .addComponent(TempoQuarantena, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                        .addComponent(Quarantena)))
+                                        .addGroup(layout.create.SequentialGroup()
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel2)
+                                                        .addComponent(Asintomatici, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jCheckBoxMortiInfetti)
+                                                        .addComponent(jLabel3)
+                                                        .addComponent(Morti, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel4)
+                                                        .addComponent(Immuni, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                .addGap(4, 4, 4)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(PopolazioneIniziale, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                        .addComponent(jLabel5))))
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addGroup(layout.create.SequentialGroup()
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(InfettiIniziali, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                        .addComponent(jLabel6))
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addComponent(PerncentualiInfetti))
+                                        .addGroup(layout.create.SequentialGroup()
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel8)
+                                                        .addComponent(jLabelPopolazione))
+                                                .addGap(6, 6, 6)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel7)
+                                                        .addComponent(jLabelInfetti))
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel9)
+                                                        .addComponent(jLabelImmunizzati))
+                                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                .addGroup(layout.create.parallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel10)
+                                                        .addComponent(JlabelMediaInfetti))))
+                                .addContainerGap(28, Short.MAX_VALUE))
+                );
+
+                pack();
+        }
+
+        private void StartActionPerformed(java.awt.event.ActionEvent evt) {
+                if (!sceneBlocked) {
+                        if (firstClick) {
+                                updatePopulationAndInfected();
+                                firstClick = false;
+                        }
+                        pandemia.setAppState(true);
+                        Start.setText("Stop");
+                        sceneBlocked = true;
+                } else {
+                        pandemia.setAppState(false);
+                        Start.setText("Start");
+                        sceneBlocked = false;
+                }
+        }
+
+        private void updatePopulationAndInfected() {
+                popolazione = ((Integer) PopolazioneIniziale.getValue()).intValue();
+                infetti = ((Integer) InfettiIniziali.getValue()).intValue();
+                nuoviInfetti = ((Integer) Infettivita.getValue()).intValue();
+                immuni = ((Integer) Immuni.getValue()).intValue();
+                asintomatici = ((Integer) Asintomatici.getValue()).intValue();
+                mortiInfetti = jCheckBoxMortiInfetti.isSelected() ? ((Integer) Morti.getValue()).intValue() : 0;
+                if (PerncentualiInfetti.isSelected()) {
+                        infetti = Math.round(((float) popolazione) * (((float) infetti) / 100));
+                }
+                pandemia.SetPopolazioneIniziale(popolazione, infetti);
+                pandemia.SetInfettività(nuoviInfetti, popolazione);
+                pandemia.SetAsintomatici(asintomatici, nuoviInfetti);
+                pandemia.SetmortiInfetti(mortiInfetti, nuoviInfetti);
+                pandemia.SetGuaritiImmuni(immuni, nuoviInfetti);
+                jLabelPopolazione.setText(String.valueOf(popolazione));
+                jLabelInfetti.setText(PerncentualiInfetti.isSelected() ? String.valueOf(infetti) : String.valueOf(InfettiIniziali.getValue()));
+                JlabelMediaInfetti.setText(fmt.format(0));
+                jLabel6.setText(PerncentualiInfetti.isSelected() ? "Infetti iniziali (%)" : "Infetti iniziali");
+        }
+
+        public static void setUI(int popolazioneAggiornata, int infettiAggiornati, double immuniAggiornati) {
+                jLabelPopolazione.setText(String.valueOf(popolazioneAggiornata));
+                jLabelInfetti.setText(String.valueOf(infettiAggiornati));
+                jLabelImmunizzati.setText(String.valueOf((int) immuniAggiornati));
+                if (infettiAggiornati > 0) {
+                        MediaInfetti = (double) (infettiAggiornati - infetti) / (double) infettiAggiornati;
+                } else {
+                        MediaInfetti = 0.0;
+                }
+                JlabelMediaInfetti.setText(fmt.format(MediaInfetti));
+        }
+
+        public static int getTempoQuarantena() { return tempoQuarantena; }
+
+        public void setCheckBoxState() {
+                if (vuoto.isSelected()) {
+                        checkBox = 0; tempoQuarantena = 0; pandemia.RemoveListener();
+                } else if (Vaccino.isSelected()) {
+                        pandemia.setListener(); tempoQuarantena = 0; checkBox = 1;
+                } else if (Quarantena.isSelected()) {
+                        pandemia.setListener(); checkBox = -1; tempoQuarantena = ((Integer) TempoQuarantena.getValue()).intValue();
+                }
+        }
+
+        static public int getCheckBoxState() { return checkBox; }
+        public static int getAsintomatici() { return asintomatici; }
+        public static int getNuoviInfetti() { return nuoviInfetti; }
+        public static int getMortiInfetti() { return mortiInfetti; }
+        public static int getImmuniGuariti() { return immuni; }
+
+        private void showHelpDialog() {
+                StringBuilder sb = new StringBuilder();
+                sb.append("Simulazione Pandemia — Guida rapida\n\n")
+                  .append("Avvio/Pausa: usa Avvia/Stop.\n\n")
+                  .append("Parametri: contagio, asintomatici, mortalità, immunità.\n")
+                  .append("Modalità area: Vaccino immunizza; Quarantena blocca (tempo ms).\n\n")
+                  .append("Colori: Grigio suscettibile, Rosso/Arancio infetto/asintomatico, Giallo immune, Croce morto.\n\n")
+                  .append("Velocità: slider ms tra aggiornamenti (più alto = più lento).\n");
+                JOptionPane.showMessageDialog(this, sb.toString(), "Help", JOptionPane.INFORMATION_MESSAGE);
+        }
+
+        private javax.swing.JSpinner Asintomatici;
+        private javax.swing.JButton Help;
+        private javax.swing.JSpinner Immuni;
+        private javax.swing.JSpinner InfettiIniziali;
+        private javax.swing.JSpinner Infettivita;
+        private static javax.swing.JLabel JlabelMediaInfetti;
+        private javax.swing.JSpinner Morti;
+        private javax.swing.JCheckBox PerncentualiInfetti;
+        private javax.swing.JSpinner PopolazioneIniziale;
+        private static javax.swing.JRadioButton Quarantena;
+        private javax.swing.JButton Start;
+        private javax.swing.JSpinner TempoQuarantena;
+        private static javax.swing.JRadioButton Vaccino;
+        private javax.swing.ButtonGroup buttonGroup1;
+        private javax.swing.JCheckBox jCheckBoxMortiInfetti;
+        private javax.swing.JLabel jLabel1;
+        private javax.swing.JLabel jLabel10;
+        private javax.swing.JLabel jLabel2;
+        private javax.swing.JLabel jLabel3;
+        private javax.swing.JLabel jLabel4;
+        private javax.swing.JLabel jLabel5;
+        private javax.swing.JLabel jLabel6;
+        private javax.swing.JLabel jLabel7;
+        private javax.swing.JLabel jLabel8;
+        private javax.swing.JLabel jLabel9;
+        private static javax.swing.JLabel jLabelImmunizzati;
+        private static javax.swing.JLabel jLabelInfetti;
+        private static javax.swing.JLabel jLabelPopolazione;
+        private static javax.swing.JRadioButton vuoto;
+
+                private final JFrame frame;
+                private final Pandemia pandemia;
+
+                static private int infetti;
+                static private int popolazione;
+                static private int asintomatici;
+                static private int nuoviInfetti;
+                static private int immuni;
+                static private double MediaInfetti;
+                static private int mortiInfetti;
+                private boolean sceneBlocked = false;
+                private boolean firstClick = true;
+                static private int checkBox;
+                static private int tempoQuarantena;
+
+                public Pannello_di_controllo() {
+                        initComponents();
+                        frame = new JFrame("Pandemia");
+                        frame.setSize(600, 600);
+                        frame.setLocationRelativeTo(null);
+                        frame.setResizable(false);
+                        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                        pandemia = new Pandemia();
+                        frame.add(pandemia);
+                        frame.pack();
+                        frame.setVisible(true);
+
+                        buttonGroup1.add(vuoto);
+                        buttonGroup1.add(Vaccino);
+                        buttonGroup1.add(Quarantena);
+
+                        infetti = ((Integer) InfettiIniziali.getValue()).intValue();
+                        popolazione = ((Integer) PopolazioneIniziale.getValue()).intValue();
+                        asintomatici = ((Integer) Asintomatici.getValue()).intValue();
+                        nuoviInfetti = ((Integer) Infettivita.getValue()).intValue();
+                        immuni = ((Integer) Immuni.getValue()).intValue();
+                        if (jCheckBoxMortiInfetti.isSelected()) {
+                                mortiInfetti = ((Integer) Morti.getValue()).intValue();
+                        }
+                        jLabelPopolazione.setText(String.valueOf(popolazione));
+                        jLabelInfetti.setText(String.valueOf(InfettiIniziali.getValue()));
+                        JlabelMediaInfetti.setText("0");
+
+                        Help.addActionListener(e -> showHelpDialog());
+
+                        aggiungiDialogoVelocita();
+                }
+
+                private void aggiungiDialogoVelocita() {
+                        JDialog speedDialog = new JDialog(this, "Velocità", false);
+                        JPanel speedPanel = new JPanel(new BorderLayout(6,6));
+                        JLabel lbl = new JLabel("Ritardo aggiornamento (ms)");
+                        int currentDelay = 16;
+                        try { currentDelay = pandemia.getUpdateDelayMillis(); } catch (Throwable ignore) {}
+                        JSlider slider = new JSlider(5, 150, currentDelay);
+                        slider.setMajorTickSpacing(25);
+                        slider.setMinorTickSpacing(5);
+                        slider.setPaintTicks(true);
+                        JLabel val = new JLabel(String.valueOf(slider.getValue()));
+                        slider.addChangeListener(new ChangeListener() {
+                                public void stateChanged(ChangeEvent e) {
+                                        int v = slider.getValue();
+                                        val.setText(String.valueOf(v));
+                                        pandemia.setUpdateDelayMillis(v);
+                                }
+                        });
+                        speedPanel.add(lbl, BorderLayout.NORTH);
+                        speedPanel.add(slider, BorderLayout.CENTER);
+                        speedPanel.add(val, BorderLayout.EAST);
+                        speedDialog.getContentPane().add(speedPanel);
+                        speedDialog.pack();
+                        speedDialog.setLocationRelativeTo(this);
+                        speedDialog.setVisible(true);
+                }
+
+                @SuppressWarnings("unchecked")
+                private void initComponents() {
+                        buttonGroup1 = new javax.swing.ButtonGroup();
+                        Start = new javax.swing.JButton();
+                        jLabel1 = new javax.swing.JLabel();
+                        jLabel2 = new javax.swing.JLabel();
+                        jCheckBoxMortiInfetti = new javax.swing.JCheckBox();
+                        jLabel3 = new javax.swing.JLabel();
+                        Infettivita = new javax.swing.JSpinner();
+                        Asintomatici = new javax.swing.JSpinner();
+                        Morti = new javax.swing.JSpinner();
+                        jLabel4 = new javax.swing.JLabel();
+                        Immuni = new javax.swing.JSpinner();
+                        PopolazioneIniziale = new javax.swing.JSpinner();
+                        InfettiIniziali = new javax.swing.JSpinner();
+                        jLabel5 = new javax.swing.JLabel();
+                        jLabel6 = new javax.swing.JLabel();
+                        PerncentualiInfetti = new javax.swing.JCheckBox();
+                        jLabel7 = new javax.swing.JLabel();
+                        jLabel8 = new javax.swing.JLabel();
+                        jLabel9 = new javax.swing.JLabel();
+                        jLabel10 = new javax.swing.JLabel();
+                        jLabelPopolazione = new javax.swing.JLabel();
+                        jLabelInfetti = new javax.swing.JLabel();
+                        jLabelImmunizzati = new javax.swing.JLabel();
+                        JlabelMediaInfetti = new javax.swing.JLabel();
+                        vuoto = new javax.swing.JRadioButton();
+                        Vaccino = new javax.swing.JRadioButton();
+                        Quarantena = new javax.swing.JRadioButton();
+                        TempoQuarantena = new javax.swing.JSpinner();
+                        Help = new javax.swing.JButton();
+
+                        setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
+                        setTitle("Pannello di controllo");
+                        setResizable(false);
+
+                        Start.setText("Avvia");
+                        Start.addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent evt) {
+                                        StartActionPerformed(evt);
+                                }
+                        });
+
+                        jLabel1.setText("Infettività(%)");
+                        jLabel2.setText("Asintomatici per infetti (%)");
+                        jCheckBoxMortiInfetti.setSelected(true);
+                        jCheckBoxMortiInfetti.setText("jCheckBox1");
+                        jLabel3.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+                        jLabel3.setText("Morti per infetti (%)");
+                        Infettivita.setValue(33);
+                        Asintomatici.setValue(20);
+                        Morti.setValue(10);
+                        jLabel4.setText("Immuni per sopravvissuti (%)");
+                        PopolazioneIniziale.setValue(100);
+                        InfettiIniziali.setValue(1);
+                        jLabel5.setText("Popolazione iniziale");
+                        jLabel6.setText("Infetti iniziali");
+                        PerncentualiInfetti.setText("Percentuale?");
+                        jLabel7.setText("Infetti");
+                        jLabel8.setText("Popolazione");
+                        jLabel9.setText("Immunizzati");
+                        jLabel10.setText("media Infetti");
+                        jLabelPopolazione.setForeground(new java.awt.Color(0, 51, 204));
+                        jLabelPopolazione.setText("0");
+                        jLabelInfetti.setForeground(new java.awt.Color(255, 0, 0));
+                        jLabelInfetti.setText("0");
+                        jLabelImmunizzati.setForeground(new java.awt.Color(255, 204, 0));
+                        jLabelImmunizzati.setText("0");
+                        JlabelMediaInfetti.setForeground(new java.awt.Color(0, 255, 0));
+                        JlabelMediaInfetti.setText("0");
+                        vuoto.setSelected(true);
+                        vuoto.addChangeListener(new javax.swing.event.ChangeListener() {
+                                public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                                        setCheckBoxState();
+                                }
+                        });
+                        Vaccino.setText("Vaccino");
+                        Vaccino.addChangeListener(new javax.swing.event.ChangeListener() {
+                                public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                                        setCheckBoxState();
+                                }
+                        });
+                        Quarantena.setText("Quarantena");
+                        Quarantena.addChangeListener(new javax.swing.event.ChangeListener() {
+                                public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                                        setCheckBoxState();
+                                }
+                        });
+                        TempoQuarantena.setValue(10000);
+                        Help.setText("Help");
+
+                        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
+                        getContentPane().setLayout(layout);
+                        layout.setHorizontalGroup(
+                                layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                .addGroup(layout.createSequentialGroup()
+                                        .addContainerGap()
+                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                                .addGroup(layout.createSequentialGroup()
+                                                                        .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 72, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                        .addComponent(jLabelInfetti, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                                .addGroup(layout.createSequentialGroup()
+                                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                                                                .addComponent(jLabel10, javax.swing.GroupLayout.PREFERRED_SIZE, 75, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                                .addComponent(jLabel9, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, 75, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                                        .addGap(6, 6, 6)
+                                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                                                .addComponent(JlabelMediaInfetti, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                                .addComponent(jLabelImmunizzati, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                        .addComponent(PerncentualiInfetti))
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                                .addGroup(layout.createSequentialGroup()
+                                                                        .addComponent(Start)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                        .addComponent(Help))
+                                                                .addComponent(vuoto, javax.swing.GroupLayout.PREFERRED_SIZE, 98, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addComponent(Vaccino, javax.swing.GroupLayout.PREFERRED_SIZE, 98, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                                                                        .addComponent(jCheckBoxMortiInfetti, javax.swing.GroupLayout.PREFERRED_SIZE, 22, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                        .addComponent(jLabel3, javax.swing.GroupLayout.PREFERRED_SIZE, 111, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                        .addComponent(Morti, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                                                                        .addComponent(jLabel1)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                        .addComponent(Infettivita, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                                                                        .addComponent(jLabel2)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                                        .addComponent(Asintomatici, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addComponent(jLabel6)
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addComponent(InfettiIniziali, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                                                .addGroup(layout.createSequentialGroup()
+                                                                        .addGap(0, 0, Short.MAX_VALUE)
+                                                                        .addComponent(jLabel5))
+                                                                .addGroup(layout.createSequentialGroup()
+                                                                        .addComponent(Quarantena, javax.swing.GroupLayout.PREFERRED_SIZE, 98, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                                        .addComponent(TempoQuarantena, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                        .addGap(92, 92, 92)
+                                                                        .addComponent(jLabel4)))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                                .addComponent(PopolazioneIniziale, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addComponent(Immuni, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 72, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addComponent(jLabelPopolazione, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                        );
+                        layout.setVerticalGroup(
+                                layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                .addGroup(layout.createSequentialGroup()
+                                        .addContainerGap()
+                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(Start)
+                                                        .addComponent(Help))
+                                                .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                        .addComponent(jLabel1)
+                                                        .addComponent(Infettivita, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                                        .addGap(7, 7, 7)
+                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addComponent(vuoto)
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addComponent(Vaccino)
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                                .addComponent(TempoQuarantena, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addComponent(Quarantena)))
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jLabel2)
+                                                                .addComponent(Asintomatici, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jCheckBoxMortiInfetti)
+                                                                .addComponent(jLabel3)
+                                                                .addComponent(Morti, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jLabel4)
+                                                                .addComponent(Immuni, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                                        .addGap(4, 4, 4)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(PopolazioneIniziale, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addComponent(jLabel5))))
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(InfettiIniziali, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                                                .addComponent(jLabel6))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addComponent(PerncentualiInfetti))
+                                                .addGroup(layout.createSequentialGroup()
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jLabel8)
+                                                                .addComponent(jLabelPopolazione))
+                                                        .addGap(6, 6, 6)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jLabel7)
+                                                                .addComponent(jLabelInfetti))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jLabel9)
+                                                                .addComponent(jLabelImmunizzati))
+                                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                                                .addComponent(jLabel10)
+                                                                .addComponent(JlabelMediaInfetti))))
+                                        .addContainerGap(28, Short.MAX_VALUE))
+                        );
+
+                        pack();
+                }
+
+                private void StartActionPerformed(java.awt.event.ActionEvent evt) {
+                        if (!sceneBlocked) {
+                                if (firstClick) {
+                                        updatePopulationAndInfected();
+                                        firstClick = false;
+                                }
+                                pandemia.setAppState(true);
+                                Start.setText("Stop");
+                                sceneBlocked = true;
+                        } else {
+                                pandemia.setAppState(false);
+                                Start.setText("Start");
+                                sceneBlocked = false;
+                        }
+                }
+
+                private void updatePopulationAndInfected() {
+                        popolazione = ((Integer) PopolazioneIniziale.getValue()).intValue();
+                        infetti = ((Integer) InfettiIniziali.getValue()).intValue();
+                        nuoviInfetti = ((Integer) Infettivita.getValue()).intValue();
+                        immuni = ((Integer) Immuni.getValue()).intValue();
+                        asintomatici = ((Integer) Asintomatici.getValue()).intValue();
+                        mortiInfetti = jCheckBoxMortiInfetti.isSelected() ? ((Integer) Morti.getValue()).intValue() : 0;
+                        if (PerncentualiInfetti.isSelected()) {
+                                infetti = Math.round(((float) popolazione) * (((float) infetti) / 100));
+                        }
+                        pandemia.SetPopolazioneIniziale(popolazione, infetti);
+                        pandemia.SetInfettività(nuoviInfetti, popolazione);
+                        pandemia.SetAsintomatici(asintomatici, nuoviInfetti);
+                        pandemia.SetmortiInfetti(mortiInfetti, nuoviInfetti);
+                        pandemia.SetGuaritiImmuni(immuni, nuoviInfetti);
+                        jLabelPopolazione.setText(String.valueOf(popolazione));
+                        jLabelInfetti.setText(PerncentualiInfetti.isSelected() ? String.valueOf(infetti) : String.valueOf(InfettiIniziali.getValue()));
+                        JlabelMediaInfetti.setText(fmt.format(0));
+                        jLabel6.setText(PerncentualiInfetti.isSelected() ? "Infetti iniziali (%)" : "Infetti iniziali");
+                }
+
+                public static void setUI(int popolazioneAggiornata, int infettiAggiornati, double immuniAggiornati) {
+                        jLabelPopolazione.setText(String.valueOf(popolazioneAggiornata));
+                        jLabelInfetti.setText(String.valueOf(infettiAggiornati));
+                        jLabelImmunizzati.setText(String.valueOf((int) immuniAggiornati));
+                        if (infettiAggiornati > 0) {
+                                MediaInfetti = (double) (infettiAggiornati - infetti) / (double) infettiAggiornati;
+                        } else {
+                                MediaInfetti = 0.0;
+                        }
+                        JlabelMediaInfetti.setText(fmt.format(MediaInfetti));
+                }
+
+                public static int getTempoQuarantena() { return tempoQuarantena; }
+
+                public void setCheckBoxState() {
+                        if (vuoto.isSelected()) {
+                                checkBox = 0; tempoQuarantena = 0; pandemia.RemoveListener();
+                        } else if (Vaccino.isSelected()) {
+                                pandemia.setListener(); tempoQuarantena = 0; checkBox = 1;
+                        } else if (Quarantena.isSelected()) {
+                                pandemia.setListener(); checkBox = -1; tempoQuarantena = ((Integer) TempoQuarantena.getValue()).intValue();
+                        }
+                }
+
+                static public int getCheckBoxState() { return checkBox; }
+                public static int getAsintomatici() { return asintomatici; }
+                public static int getNuoviInfetti() { return nuoviInfetti; }
+                public static int getMortiInfetti() { return mortiInfetti; }
+                public static int getImmuniGuariti() { return immuni; }
+
+                private void showHelpDialog() {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("Simulazione Pandemia — Guida rapida\n\n")
+                          .append("Avvio/Pausa: usa Avvia/Stop.\n\n")
+                          .append("Parametri: contagio, asintomatici, mortalità, immunità.\n")
+                          .append("Modalità area: Vaccino immunizza; Quarantena blocca (tempo ms).\n\n")
+                          .append("Colori: Grigio suscettibile, Rosso/Arancio infetto/asintomatico, Giallo immune, Croce morto.\n\n")
+                          .append("Velocità: slider ms tra aggiornamenti (più alto = più lento).\n");
+                        JOptionPane.showMessageDialog(this, sb.toString(), "Help", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+                private javax.swing.JSpinner Asintomatici;
+                private javax.swing.JButton Help;
+                private javax.swing.JSpinner Immuni;
+                private javax.swing.JSpinner InfettiIniziali;
+                private javax.swing.JSpinner Infettivita;
+                private static javax.swing.JLabel JlabelMediaInfetti;
+                private javax.swing.JSpinner Morti;
+                private javax.swing.JCheckBox PerncentualiInfetti;
+                private javax.swing.JSpinner PopolazioneIniziale;
+                private static javax.swing.JRadioButton Quarantena;
+                private javax.swing.JButton Start;
+                private javax.swing.JSpinner TempoQuarantena;
+                private static javax.swing.JRadioButton Vaccino;
+                private javax.swing.ButtonGroup buttonGroup1;
+                private javax.swing.JCheckBox jCheckBoxMortiInfetti;
+                private javax.swing.JLabel jLabel1;
+                private javax.swing.JLabel jLabel10;
+                private javax.swing.JLabel jLabel2;
+                private javax.swing.JLabel jLabel3;
+                private javax.swing.JLabel jLabel4;
+                private javax.swing.JLabel jLabel5;
+                private javax.swing.JLabel jLabel6;
+                private javax.swing.JLabel jLabel7;
+                private javax.swing.JLabel jLabel8;
+                private javax.swing.JLabel jLabel9;
+                private static javax.swing.JLabel jLabelImmunizzati;
+                private static javax.swing.JLabel jLabelInfetti;
+                private static javax.swing.JLabel jLabelPopolazione;
+                private static javax.swing.JRadioButton vuoto;
+        }
+    }// </editor-fold>//GEN-END:initComponents
+
+    
+    /**
+     * Gestore dell'evento click sul pulsante Start/Stop.
+     * 
+     * Al primo click:
+     * - Inizializza la popolazione e i parametri
+     * - Avvia la simulazione
+     * 
+     * Click successivi:
+     * - Mette in pausa o riprende la simulazione
+     * - Cambia il testo del pulsante (Start ↔ Stop)
+     * 
+     * @param evt Evento del pulsante
+        * /
+    private void StartActionPerformed(java.awt.event.ActionEvent evt) {// GEN-FIRST:event_StartActionPerformed
+        if (!sceneBlocked) {
+            // ========================================
+            // AVVIO DELLA SIMULAZIONE
+            // ========================================
+            
+            if (firstClick) {
+                // Prima volta: inizializza tutti i parametri
+                updatePopulationAndInfected();
+                firstClick = false;
+            }
+            
+            // Avvia la simulazione
+            pandemia.setAppState(true);
+            Start.setText("Stop");
+            sceneBlocked = true;
+            
+        } else {
+            // ========================================
+            // PAUSA DELLA SIMULAZIONE
+            // ========================================
+            
+            // Ferma la simulazione
+            pandemia.setAppState(false);
+            Start.setText("Start");
+            sceneBlocked = false;
+        }
+    }// GEN-LAST:event_StartActionPerformed
+
+    /**
+     * Aggiorna i parametri della popolazione e delle infezioni.
+     * 
+     * Chiamato al primo avvio della simulazione per:
+     * - Leggere tutti i valori dagli spinner
+     * - Calcolare le percentuali se richiesto
+     * - Inizializzare la popolazione nel pannello Pandemia
+     * - Configurare i parametri epidemiologici
+     * - Aggiornare le etichette dell'interfaccia
+        * /
+    private void updatePopulationAndInfected() {
+        // ========================================
+        // LETTURA PARAMETRI DALL'INTERFACCIA
+        // ========================================
+        
+        popolazione = (int) PopolazioneIniziale.getValue();
+        infetti = (int) InfettiIniziali.getValue();
+        nuoviInfetti = (int) Infettivita.getValue();
+        immuni = (int) Immuni.getValue();
+        asintomatici = (int) Asintomatici.getValue();
+        mortiInfetti = jCheckBoxMortiInfetti.isSelected() ? (int) Morti.getValue() : 0;
+
+        // ========================================
+        // CALCOLO PERCENTUALI (se richiesto)
+        // ========================================
+        
+        if (PerncentualiInfetti.isSelected()) {
+            // Converte il numero di infetti da percentuale a valore assoluto
+            // Esempio: 10% di 100 persone = 10 persone
+            infetti = Math.round(((float) popolazione) * (((float) infetti) / 100));
+        }
+
+        // ========================================
+        // INIZIALIZZAZIONE SIMULAZIONE
+        // ========================================
+        
+        // Inizializza la popolazione nel pannello di simulazione
+        pandemia.SetPopolazioneIniziale(popolazione, infetti);
+
+        // Configura i parametri epidemiologici
+        pandemia.SetInfettività(nuoviInfetti, popolazione);
+        pandemia.SetAsintomatici(asintomatici, nuoviInfetti);
+        pandemia.SetmortiInfetti(mortiInfetti, nuoviInfetti);
+        pandemia.SetGuaritiImmuni(immuni, nuoviInfetti);
+
+        // ========================================
+        // AGGIORNAMENTO INTERFACCIA
+        // ========================================
+        
+        jLabelPopolazione.setText("" + popolazione);
+        jLabelInfetti.setText(PerncentualiInfetti.isSelected() ? 
+            "" + infetti : "" + InfettiIniziali.getValue());
+        JlabelMediaInfetti.setText("" + fmt.format(0));
+        
+        // Cambia l'etichetta se si usano le percentuali
+        jLabel6.setText(PerncentualiInfetti.isSelected() ? 
+            jLabel6.getText() + " (%)" : "Infetti iniziali");
+    }
+
+    // ========================================
+    // GESTORI EVENTI RADIO BUTTON
+    // ========================================
+    
+    /**
+     * Gestore del cambiamento di stato del radio button "Vuoto".
+     * Disattiva qualsiasi modalità di intervento.
+        * /
+    private void vuotoStateChanged(javax.swing.event.ChangeEvent evt) {// GEN-FIRST:event_vuotoStateChanged
+        setCheckBoxState();
+    }// GEN-LAST:event_vuotoStateChanged
+
+    /**
+     * Gestore del cambiamento di stato del radio button "Vaccino".
+     * Attiva la modalità vaccino per immunizzare le persone.
+        * /
+    private void VaccinoStateChanged(javax.swing.event.ChangeEvent evt) {// GEN-FIRST:event_VaccinoStateChanged
+        setCheckBoxState();
+    }// GEN-LAST:event_VaccinoStateChanged
+
+    /**
+     * Gestore del cambiamento di stato del radio button "Quarantena".
+     * Attiva la modalità quarantena per bloccare le persone.
+        * /
+    private void QuarantenaStateChanged(javax.swing.event.ChangeEvent evt) {// GEN-FIRST:event_QuarantenaStateChanged
+        setCheckBoxState();
+    }// GEN-LAST:event_QuarantenaStateChanged
+
+    // ========================================
+    // METODI DI AGGIORNAMENTO UI
+    // ========================================
+    
+    /**
+     * Aggiorna le statistiche visualizzate nell'interfaccia utente.
+     * 
+     * Chiamato durante la simulazione per mostrare:
+     * - Popolazione corrente
+     * - Numero di infetti
+     * - Numero di immunizzati
+     * - Media degli infetti
+     * 
+     * THREAD-SAFE: Metodo statico che può essere chiamato da qualsiasi thread.
+     * 
+     * @param popolazioneAggiornata Numero corrente di persone vive
+     * @param infettiAggiornati Numero corrente di infetti
+     * @param immuniAggiornati Numero corrente di immuni
+        * /
+    public static void setUI(int popolazioneAggiornata, int infettiAggiornati, double immuniAggiornati) {
+        // Aggiorna le etichette con i nuovi valori
+        jLabelPopolazione.setText("" + popolazioneAggiornata);
+        jLabelInfetti.setText("" + infettiAggiornati);
+        jLabelImmunizzati.setText("" + (int) immuniAggiornati);
+        
+        // Calcola la media degli infetti
+        // Formula: (nuovi infetti - infetti iniziali) / nuovi infetti
+        if (infettiAggiornati > 0) {
+            MediaInfetti = (double) (infettiAggiornati - infetti) / (double) infettiAggiornati;
+        } else {
+            MediaInfetti = 0;
+        }
+        JlabelMediaInfetti.setText("" + fmt.format(MediaInfetti));
+    }
+
+    /**
+     * Restituisce il tempo di quarantena configurato.
+     * @return Tempo di quarantena in millisecondi
+        * /
+    public static int getTempoQuarantena() {
+        return tempoQuarantena;
+    }
+
+    /**
+     * Configura lo stato della checkbox e attiva/disattiva il listener del mouse.
+     * 
+     * Tre modalità:
+     * - Vuoto (0): Nessuna azione, listener disattivato
+     * - Vaccino (1): Selezione area per vaccinare, listener attivo
+     * - Quarantena (-1): Selezione area per quarantena, listener attivo
+        * /
+    public void setCheckBoxState() {
+        if (vuoto.isSelected()) {
+            // Modalità vuota: disattiva tutto
+            checkBox = 0;
+            tempoQuarantena = 0;
+            pandemia.RemoveListener();
+            
+        } else if (Vaccino.isSelected()) {
+            // Modalità vaccino: attiva listener
+            pandemia.setListener();
+            tempoQuarantena = 0;
+            checkBox = 1;
+            
+        } else if (Quarantena.isSelected()) {
+            // Modalità quarantena: attiva listener e imposta durata
+            pandemia.setListener();
+            checkBox = -1;
+            tempoQuarantena = (int) TempoQuarantena.getValue();
+        }
+    }
+
+    // ========================================
+    // GETTER PER PARAMETRI DELLA SIMULAZIONE
+    // ========================================
+    
+    /**
+     * Restituisce lo stato della checkbox.
+     * @return 0 = vuoto, 1 = vaccino, -1 = quarantena
+        * /
+    static public int getCheckBoxState() {
+        return checkBox;
+    }
+
+    /**
+     * Restituisce la percentuale di asintomatici.
+     * @return Percentuale di asintomatici (0-100)
+        * /
+    public static int getAsintomatici() {
+        return asintomatici;
+    }
+
+    /**
+     * Restituisce la percentuale di infettività.
+     * @return Percentuale di nuovi infetti (0-100)
+        * /
+    public static int getNuoviInfetti() {
+        return nuoviInfetti;
+    }
+
+    /**
+     * Restituisce la percentuale di mortalità tra gli infetti.
+     * @return Percentuale di morti (0-100)
+     */
+    public static int getMortiInfetti() {
+        return mortiInfetti;
+    }
+
+    /**
+     * Restituisce la percentuale di guariti che diventano immuni.
+     * @return Percentuale di immuni tra i guariti (0-100)
+     */
+    public static int getImmuniGuariti() {
+        return immuni;
+    }
+
+        // ========================================
+        // HELP
+        // ========================================
+        private void showHelpDialog() {
+                StringBuilder sb = new StringBuilder();
+                sb.append("Simulazione Pandemia — Guida rapida\n\n");
+                sb.append("Avvio/Pausa:\n");
+                sb.append("- Premi 'Avvia' per iniziare; 'Stop' per mettere in pausa.\n\n");
+                sb.append("Parametri:\n");
+                sb.append("- Popolazione iniziale: numero di persone nella simulazione.\n");
+                sb.append("- Infetti iniziali: valore o % (se spuntato).\n");
+                sb.append("- Infettività (%): probabilità di contagio al contatto.\n");
+                sb.append("- Asintomatici (%): quota degli infetti senza sintomi.\n");
+                sb.append("- Morti per infetti (%): mortalità (abilita la checkbox).\n");
+                sb.append("- Immuni per sopravvissuti (%): quota che diventa immune.\n\n");
+                sb.append("Azioni sull'area di gioco:\n");
+                sb.append("- Seleziona 'Vaccino' o 'Quarantena'.\n");
+                sb.append("- Trascina col mouse per selezionare un rettangolo.\n");
+                sb.append("  • Vaccino: immunizza le persone nell'area.\n");
+                sb.append("  • Quarantena: blocca le persone per 'Tempo quarantena' ms.\n\n");
+                sb.append("Legenda colori:\n");
+                sb.append("- Grigio: suscettibile.\n");
+                sb.append("- Rosso/Arancio: infetto/asintomatico (con bordo blu se in quarantena).\n");
+                sb.append("- Giallo: immune/vaccinato.\n");
+                sb.append("- Croce rossa: morto.\n\n");
+                sb.append("Statistiche:\n");
+                sb.append("- Popolazione: viventi. Infetti: numero corrente. Immunizzati: tot immuni.\n");
+                sb.append("- Media Infetti: media corrente normalizzata.\n\n");
+                sb.append("Suggerimenti prestazioni:\n");
+                sb.append("- Evita popolazioni eccessive su PC lenti.\n");
+                sb.append("- Chiudi altre applicazioni durante la simulazione.\n");
+
+                javax.swing.JOptionPane.showMessageDialog(this, sb.toString(), "Help", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+        }
+
+    // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JSpinner Asintomatici;
+    private javax.swing.JButton Help;
+    private javax.swing.JSpinner Immuni;
+    private javax.swing.JSpinner InfettiIniziali;
+    private javax.swing.JSpinner Infettivita;
+    private static javax.swing.JLabel JlabelMediaInfetti;
+    private javax.swing.JSpinner Morti;
+    private javax.swing.JCheckBox PerncentualiInfetti;
+    private javax.swing.JSpinner PopolazioneIniziale;
+    private static javax.swing.JRadioButton Quarantena;
+    private javax.swing.JButton Start;
+    private javax.swing.JSpinner TempoQuarantena;
+    private static javax.swing.JRadioButton Vaccino;
+    private javax.swing.ButtonGroup buttonGroup1;
+    private javax.swing.JCheckBox jCheckBoxMortiInfetti;
+    private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel10;
+    private javax.swing.JLabel jLabel2;
+    private javax.swing.JLabel jLabel3;
+    private javax.swing.JLabel jLabel4;
+    private javax.swing.JLabel jLabel5;
+    private javax.swing.JLabel jLabel6;
+    private javax.swing.JLabel jLabel7;
+    private javax.swing.JLabel jLabel8;
+    private javax.swing.JLabel jLabel9;
+    private static javax.swing.JLabel jLabelImmunizzati;
+    private static javax.swing.JLabel jLabelInfetti;
+    private static javax.swing.JLabel jLabelPopolazione;
+    private static javax.swing.JRadioButton vuoto;
+    // End of variables declaration//GEN-END:variables
+}

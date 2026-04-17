@@ -4,6 +4,7 @@ nbproject/genfiles.properties
 
 # Build output
 build/
+dist/
 build.xml
 
 # Java artifacts
